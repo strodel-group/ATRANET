@@ -4,55 +4,122 @@ Example Script for using the ATRANET_v2 code to calculated Transition Networks f
 
 This Script needs you to specify:
 
-top:    structure file in .gro/.pdb format
-traj:   system traj in .xtc/.trr format
-TMname: name of most output files
-desc:   dictionary containing distance used for 'allContacts'
-state:  descriptors used to calculate the network. This version contains:
-            - residueInHelix
-            - residueInBeta
-            - residueInCoil
-            - allContacts
-            - EndToEnd
-            - Rg
-nProt:  Define length of the main protein (first in .gro/.pdb file)
-nLig:   Define length of the ligand (second in .gro/.pdb)
+    top:    structure file in .gro/.pdb format
 
-This Script Outputs:
-TMname.gexf:    Graph file which can be read in with gephi
-TMname.npy:     numpy file containing the Transition Matrix
-TMnameDict.txt: Dictionary of TN states
-state_trj.txt:  trajectory of states (corralates traj. frames with states)
+    traj:   system traj in .xtc/.trr format
+
+    TMname: nameing convention for output files
+
+    state:  descriptors used to calculate the network. This version contains:
+                - residueInHelix
+                - residueInBeta
+                - residueInCoil
+                - EndToEnd
+                - Rg
+                - ProtProtContacts
+                - ProtProtContactsChain
+                - ProtLigContacts
+                - OligomericSize
+                - hydrophobicContacts
+                - polarContacts
+                - intermolecularSaltBridge
+
+    desc:   dictionary containing distance used for:
+                - ProtProtContacts
+                - ProtProtContactsChain
+                - ProtLigContacts
+                - OligomericSize
+                - hydrophobicContacts
+                - polarContacts
+                - intermolecularSaltBridge
+
+    nProt:    Number of protein chains
+
+    ResProt:  Define length of the main protein ie. number of residual elements (first in .gro/.pdb file)
+
+    nLig:     Number of Ligand chains
+
+    ResLig:   Define length of the ligand ie. number of residual elements / building blocks (second in .gro/.pdb)
+
+Optional keyargs:
+
+    res:      Defines the binning width of the Rg/EndToEnd routine in Angstrom
+
+    traj_suf: specifies the suffix of the input trajectories (default='.xtc')
 """
 
-from ATRANET_v2 import TransitionNetworks
+from ATRANET_v2_1 import TransitionNetworks
+import numpy as np
 
-""" Input Data """
+#################################################################################################
+########################################## Input Data ###########################################
+#################################################################################################
+
 TMname = 'TM_SystemName'
 top = '/path/to/system.pdb'
 traj = '/path/to/trajectory*ies/system_prefix'
 
-""" Define Descriptor Functions """
+#################################################################################################
+################################## Define Descriptor Functions ##################################
+#################################################################################################
 
-desc = {'allContacts': 10.0}
-state = ['allContacts', 'residuesInHelix', 'residuesInBeta', 'EndToEnd']
+""" We are considering a hexamer simulation of short proteins with 14 residues each """
+nProt = 6
+ResProt = 14
+nLig = 0
+ResLig = 0
 
-""" Define length of the main protein (first in .gro/.pdb file) and ligand (second in .gro/.pdb)
-    In case of a monomer set nLig=0 or for dimers nLig = nProt """
 
-nProt = 42
-nLig = 16
+"""
+Define Descriptors:
+    1. Calculate the number of inter protein contacts between residues of different protein chains where a distance below 10 Angsrom is considered a contact.
+    2. Calculate size of the largest Oligomer, considering two protein chains closer than 10 Angstrom to be in contact.
+    3. Number of residues in alpha structure
+    4. Number of residue in beta sheet structure
+"""
+desc = {'ProtProtContacts': 10, 'OligomericSize': 10}
+state = ['ProtProtContacts', 'OligomericSize' ,'residuesInHelix', 'residuesInBeta']
 
-""" Initialize Transition Network Class 
-    res: resolution or binwidth for EtE/Rg """
 
-tn = TransitionNetworks(top=top, traj=traj, desc=desc,
-                        nProt=nProt ,nLig=nLig, state=state, res=2)
+#################################################################################################
+################################ Initialize and Generate Network ################################
+#################################################################################################
+
+""" Initialize """
+tn = TransitionNetworks(top=top, traj=traj,
+                        nProt=nProt , ResProt=ResProt, nLig=nLig, ResLig=ResLig,
+                        desc=desc, state=state, res=2)
+
 
 
 """ Running generateNetwork() will calculate the TM and output the Graph as .gefx """
+tn.GenerateNetwork(gexfName=TMname+'.gexf',TransitionMatrixName=TMname+'.npy', DictionaryName=TMname+'Dict.txt', statetrjName=TMname+'state_trj.txt')
 
-tn.generateNetwork(gexfName=TMname+'.gexf',TransitionMatrixName=TMname+'.npy', DictionaryName=TMname+'Dict.txt')
+
+""" Print correlation between descriptors to the terminal """
+tn.correlationCoefficients(trjpath=TMname+'state_trj.txt')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
