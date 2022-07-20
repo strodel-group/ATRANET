@@ -48,7 +48,7 @@ Optional keyargs:
     traj_suf: specifies the suffix of the input trajectories (default='.xtc')
 """
 
-from ATRANET_v2_1 import TransitionNetworks
+from ATRANET import TransitionNetworks
 import numpy as np
 
 #################################################################################################
