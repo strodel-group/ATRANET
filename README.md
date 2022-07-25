@@ -7,7 +7,7 @@ The ATRANET script invokes the MD trajectory analysis software MDTraj and MDAnal
 It then produces a file that contains the transition matrix, including the states' populations and the number of transitions between the states.
 The transition matrix is saved as a .gexf file, which can be visualized by the network visualization software Gephi.
 
-The script was originally written by Alexander-Maurice Illig (see JCTC-2020 branch) and later rewritten by Moritz Schäffler (master branch). Additional contributers are Suman Samantray and Mohammed Khaled.
+The script was originally written by Alexander-Maurice Illig (see JCTC-2020 branch https://github.com/strodel-group/ATRANET/tree/JCTC-2020-https/doi.org/10.1021/acs.jctc.0c00727) and later rewritten by Moritz Schäffler (master branch). Additional contributers are Suman Samantray and Mohammed Khaled.
 
 # ATRANET.py
 The ATRANET.py file contains the main TransitionNetworks class that carries out all the calculations and utilizes the following python packages:
@@ -93,5 +93,4 @@ Parameters:
 # ATRANET_RunExample.py
 
 The ATRANET_RunExample.py demonstrate the usage of the ATRANET.py script.
-
 
