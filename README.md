@@ -9,6 +9,9 @@ The transition matrix is saved as a .gexf file, which can be visualized by the n
 
 The script was originally written by Alexander-Maurice Illig (see JCTC-2020 branch https://github.com/strodel-group/ATRANET/tree/JCTC-2020-https/doi.org/10.1021/acs.jctc.0c00727) and later rewritten by Moritz Schäffler (master branch). Additional contributers are Suman Samantray and Mohammed Khaled.
 
+For an extended explanation on the usage of Transition Networks and the provided descriptor functions, please refer to:
+https://www.sciencedirect.com/science/article/abs/pii/S1046202322001670.
+
 # ATRANET.py
 The ATRANET.py file contains the main TransitionNetworks class that carries out all the calculations and utilizes the following python packages:
 MDAnalysis, mdtraj, sklearn, numba, warnings, networkx, numpy, glob, sys, ast, pathlib
@@ -38,6 +41,8 @@ The TransitionNetworks class needs you to specify the following keyargs:
                 - residueInCoil
                 - EndToEnd
                 - Rg
+                - CompactnessFactor
+                - OrderParameter
                 - ProtProtContacts
                 - ProtProtContactsChain
                 - ProtLigContacts
@@ -45,6 +50,7 @@ The TransitionNetworks class needs you to specify the following keyargs:
                 - hydrophobicContacts
                 - polarContacts
                 - intermolecularSaltBridge
+                - Ramachandran
 
     desc:   dictionary containing distance used for:
                 - ProtProtContacts
@@ -81,13 +87,13 @@ Parameters:
 
   writes the trajectory of states to an output .txt file. This can be usufull for correlating states and frames of the input trajectorym aswell as caclculating the correlation coefficient between descritptors.
   
-  default = False
-
-  The output network file shows the states ( nodes )  size as the population of the states.
+  default = True
 
 ### tn.GenerateNetwork()
 
   Constructs the Transition Network from a Transition Matrix and dictionary of states. 
+  
+  The output network file shows the states ( nodes )  size as the population of the states.
 
 
 # ATRANET_RunExample.py
