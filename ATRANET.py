@@ -14,23 +14,53 @@ From this, the script will produce a file that contains the transition
 matrix and the state’s populations (”size”), which can be visualized
 by network visualization software like Gephi.
 
-This class may need the following input:
+This Script needs you to specify:
 
-top:    structure file in .gro/.pdb format
-traj:   system traj in .xtc/.trr format
-TMname: name of most output files
-desc:   dictionary containing distance used for 'allContacts'
-state:  descriptors used to calculate the network. This version contains:
-            - residueInHelix
-            - residueInBeta
-            - residueInCoil
-            - allContacts
-            - EndToEnd
-            - Rg
-nProt:  Define length of the main protein (first in .gro/.pdb file)
-nLig:   Define length of the ligand (second in .gro/.pdb)
-        if considering dimers set nLig = nProt
-        if considering monomers set nLig = 0
+    top:    structure file in .gro/.pdb format
+
+    traj:   system traj in .xtc/.trr format
+
+    TMname: nameing convention for output files
+
+    state:  descriptors used to calculate the network. This version contains:
+                - residueInHelix
+                - residueInBeta
+                - residueInCoil
+                - EndToEnd
+                - Rg
+                - CompactnessFactor
+                - OrderParameter
+                - ProtProtContacts
+                - ProtProtContactsChain
+                - ProtLigContacts
+                - OligomericSize
+                - hydrophobicContacts
+                - polarContacts
+                - intermolecularSaltBridge
+                - Ramachandran
+
+    desc:   dictionary containing distance used for:
+                - ProtProtContacts
+                - ProtProtContactsChain
+                - ProtLigContacts
+                - OligomericSize
+                - hydrophobicContacts
+                - polarContacts
+                - intermolecularSaltBridge
+
+    nProt:    Number of protein chains
+
+    ResProt:  Define length of the main protein ie. number of residual elements (first in .gro/.pdb file)
+
+    nLig:     Number of Ligand chains
+
+    ResLig:   Define length of the ligand ie. number of residual elements / building blocks (second in .gro/.pdb)
+
+Optional keyargs:
+
+    res:      Defines the binning width of the Rg/EndToEnd routine in Angstrom
+
+    traj_suf: specifies the suffix of the input trajectories (default='.xtc')
 
 This Script Outputs:
 TMname.gexf:    Graph file which can be read in with gephi
@@ -197,6 +227,10 @@ class TransitionNetworks:
             self.universe = md.Universe(self.top, traj)
             self.nFrames = self.universe.trajectory.n_frames
 
+            ############################
+            ###  Full Traj Analysis  ###
+            ############################
+
             """Check if Secondary Structure needs to be calculated"""
             if any("residuesIn" in s for s in self.state):
                 print('Calculating Secondary Structure')
@@ -223,7 +257,16 @@ class TransitionNetworks:
                 print('Determine possible salt bridge forming atom pairs')
                 self._FindSaltBridgePartner()
 
+
+            """ Calc Ramachandran kmeans cluster for whole trajectory  """
+            if any("Ramachandran" in s for s in self.state):
+                print('Calc Ramachandran kmeans cluster')
+                self._Ramachandran()
         
+            
+            ########################
+            ####  Check Frames  ####
+            ########################
             """ Iterate over all frames and determine the coresponding state """
             print('Checking States')
             for frame in range(self.nFrames):
@@ -241,7 +284,9 @@ class TransitionNetworks:
                 """loop over all given keys and determine the coresponding state"""
                 for key in self.state:
 
-                    """ Secondary Structure descriptors """
+                    ############################################
+                    ##### Secondary Structure descriptors ######
+                    ############################################
 
                     if key == 'residuesInHelix':
                         stateInFrame.append(np.count_nonzero(self.SecondStruct[frame] == 'H'))
@@ -250,10 +295,14 @@ class TransitionNetworks:
                     if key == 'residuesInCoil':
                         stateInFrame.append(np.count_nonzero(self.SecondStruct[frame] == 'C'))
 
+                    ############################################
+                    #### Measure of Compactness descriptors ####
+                    ############################################
+
                     """ NC-distance  """
 
                     if key == 'EndToEnd' : 
-                        ete = self.EndToEndDistance()
+                        ete = self._EndToEndDistance()
                         d = self.res * int(ete/self.res)
                         #print('EtE: ', d, ete)    
                         stateInFrame.append(d)         
@@ -261,10 +310,19 @@ class TransitionNetworks:
                     """ Radius of Gyration """ 
 
                     if key == 'Rg' : 
-                        Rg = self.Gyrate()
+                        Rg = self._Gyrate()
                         d = self.res * int(Rg/self.res)
                         stateInFrame.append(d)
 
+                    if key == 'CompactnessFactor':
+
+                        d = self._CompactnessFactor()
+
+                        stateInFrame.append(d)
+
+                    ############################################
+                    ########### Contact descriptors ############
+                    ############################################
 
                     """ Number of Protein-Ligand Contacts
                         define 'desc = {'ProtLigContacts': cutoff}' in your input file with cutoff beeing a float
@@ -306,20 +364,6 @@ class TransitionNetworks:
                         d = self._ContactPairs(self.Mpp_chain, cutoff)
                         stateInFrame.append(d)
 
-                    """ Calculates the size of the largest Oligomer from the chain distance matrix (self.Mpp_chain)
-                        Use the descriptor  'desc = {'OligomericSize': cutoff}' and 'state = [... , 'OligomericSize']
-                        in your input. """
-                    if key == 'OligomericSize':
-                       # If not yet calculated calc distance Matrix
-                        if type(self.Mpp_chain) is not np.ndarray:
-                            self._DistanceProteinProtein()
-
-                        """ Get the cutoff value for the descriptor function oligomeric size """
-                        cutoff = self.descriptors['OligomericSize']
-                        d = self._OligomericSize(cutoff)
-                        stateInFrame.append(d)
-
-
                     """ Calculates number of hydrophobic contacts between pairs of proteins """
                     if key == 'hydrophobicContacts':
                         # If not yet calculated calc distance Matrix
@@ -339,6 +383,26 @@ class TransitionNetworks:
                         d = self._residuesWithAttribute(descriptorName='polarContacts', attribute='polar')
 
                         stateInFrame.append(d)
+                    ############################################
+                    ############  Oligomeric Size  #############
+                    ############################################
+
+                    """ Calculates the size of the largest Oligomer from the chain distance matrix (self.Mpp_chain)
+                        Use the descriptor  'desc = {'OligomericSize': cutoff}' and 'state = [... , 'OligomericSize']
+                        in your input. """
+                    if key == 'OligomericSize':
+                       # If not yet calculated calc distance Matrix
+                        if type(self.Mpp_chain) is not np.ndarray:
+                            self._DistanceProteinProtein()
+
+                        """ Get the cutoff value for the descriptor function oligomeric size """
+                        cutoff = self.descriptors['OligomericSize']
+                        d = self._OligomericSize(cutoff)
+                        stateInFrame.append(d)
+
+                    ############################################
+                    ############    Saltbridges    #############
+                    ############################################
 
                     """ Calculste number of intermolecular salt bridges """
                     if key == 'intermolecularSaltBridge':
@@ -347,18 +411,41 @@ class TransitionNetworks:
 
                         stateInFrame.append(d)
 
-                    """ Calculste Order Parameter """
+                    ############################################
+                    ############ Order descriptors #############
+                    ############################################
+
+                    """ Calculate Order Parameter. P1: polar order parameter, P2: nematic order parameter"""
                     if key == 'OrderParameter':
 
                         d = self._OrderParameter()
 
-                        stateInFrame.append(d)
+                        P1 = round(d[0],1)
+                        P2 = round(d[1],1)
+
+                        stateInFrame.append(P1)
+                        stateInFrame.append(P2)
+
+                    ############################################
+                    ###########    Ramachandran    #############
+                    ############################################
+
+                    """ Ramachandran kmeans value """
+
+                    if key == 'Ramachandran' : 
+                        feature = self.rama_list[frame]  
+                        stateInFrame.append(feature)
+
+
+                    ############################################
+                    ########### Custom descriptors #############
+                    ############################################
 
                     """ If you want to add a decriptor specify this here.
                         You can then add [..., custom] to your list of states in the input file """
 
                     if key == 'custom' : 
-                        feature = CustomDescriptor()  
+                        feature = _CustomDescriptor()  
                         stateInFrame.append(feature)
 
 
@@ -441,7 +528,7 @@ class TransitionNetworks:
         if path_TM.is_file():
             print('Loading existing Transition Matrix')
             transitionMatrix = np.load(TransitionMatrixName)
-            transitionMatrixDict = self.loadDict(DictionaryName)
+            transitionMatrixDict = self.LoadDict(DictionaryName)
 
         else:            
             print('Calculating Transition Matrix')
@@ -449,7 +536,7 @@ class TransitionNetworks:
 
             """ Save Matrix and dictionary """
             np.save(TransitionMatrixName,transitionMatrix)
-            self.saveDict(DictionaryName,transitionMatrixDict)
+            self.SaveDict(DictionaryName,transitionMatrixDict)
 
 
         print('Building Network')
@@ -496,11 +583,15 @@ class TransitionNetworks:
 
     """ Just specify your descriptor function here and add it to the loop in GenerateTransitionMatrix()
         as described above """
-    def CustomDescriptor(self):
+    def _CustomDescriptor(self):
 
         print('This could be your function')   
 
         return 0
+
+########################
+###### Contacts ########
+########################
 
     """ Calculate all residue-residue distances between all Proteins and saves the matrix of square distances
         to the class """
@@ -530,34 +621,6 @@ class TransitionNetworks:
 
                 
                 self.Mpp_chain[i,j] = np.amin(M_sq)
-
-    '''Calculates the number of Contacts between residues of Chain A and Chain B'''
-    ############### OLD RELEASE ##############
-    def intermolecularContactPairs(self):
-
-        frame = self.universe.trajectory
-        box = self.universe.dimensions
-        
-        self.Mpp_res = np.zeros((self.nProt*self.ResProt,self.nProt*self.ResProt))
-        self.Mpp_chain = np.zeros((self.nProt,self.nProt)) 
-
-        for i in range(self.nProt):
-            for j in range(i+1,self.nProt):
-
-                """ Read out the Atom postions of one pair of Proteins and split the position vector
-                    according to their respective residues """
-                posA = self.universe.residues[i*self.ResProt:(i+1)*self.ResProt].atoms.positions                   
-                
-                posB = self.universe.residues[j*self.ResProt:(j+1)*self.ResProt].atoms.positions 
-                
-                
-                """ calc distance matrix of all atoms """
-                M_d = distance_array(posA,posB, box=box)
-
-                """ Check minimum distance between residues and compare with cutoff"""
-                self.Mpp_chain[i,j] = np.amin(M_d)**2
-
-
 
     """ Calculate all residue-ligand distances between Proteins and Ligands saves the matrix of square distances
         to the class.
@@ -647,8 +710,10 @@ class TransitionNetworks:
         d = self._ContactPairs(conv_dist,cutoff)
         return d
 
-               
-        #attribute_contacts
+
+########################
+##### Saltbridge  ######
+########################
 
     """ Determine all pairs of atoms which might form intermolecular Salt Bridges """                
     def _FindSaltBridgePartner(self):
@@ -753,6 +818,10 @@ class TransitionNetworks:
 
         return Contacts
 
+########################
+### Order Parameter ####
+########################
+
     """ Calculate the polar/nematic order parameter P1/P2 for the orientation of the molecules.
         See: 'Thermodynamic analysis of structural transitions during GNNQQNY aggregation'
         from Kenneth L. Osborne,  Michael Bachmann, and Birgit Strodel published in
@@ -770,7 +839,7 @@ class TransitionNetworks:
             Cvec = Cpos[(i+1)*self.ResProt-1] # -1 as list starts from 0
             diff = Cvec - Nvec
 
-            NCvec[i] = diff
+            NCvec[i] = diff/np.linalg.norm(diff)
 
         """Compute the director using the normalized vectors."""
         director = self._director(NCvec) 
@@ -784,8 +853,8 @@ class TransitionNetworks:
             
         """Use the absolut value, because negative only occur as result of the algorithm's
         used for computing the eigenvectors."""
-        polarOrderParameter = abs(polarOrderParameter/len(vectors))
-        nematicOrderParameter = abs(nematicOrderParameter/(2*len(vectors)))
+        polarOrderParameter = abs(polarOrderParameter/len(NCvec))
+        nematicOrderParameter = abs(nematicOrderParameter/(2*len(NCvec)))
         return (polarOrderParameter, nematicOrderParameter)       
 
         
@@ -797,7 +866,7 @@ class TransitionNetworks:
         
         """Compute Q for every vector."""
         for v in vectors:
-            vector = v/np.linalg.norm(v)
+            vector = v
             
             Q = np.zeros((3, 3))
             for a in range(3):
@@ -831,7 +900,11 @@ class TransitionNetworks:
         director = eigenVectors[:,0]   
         return (director)
 
-        
+ 
+########################
+###### Oligomer ########
+########################
+       
     """ Calculate the size of the largest oligomer within the system """
     def _OligomericSize(self,cutoff):
 
@@ -861,35 +934,54 @@ class TransitionNetworks:
                     oligomer[i] = united
                     oligomer[j] = united
 
-        size = [len(oligomer[i]) for i in range(self.nProt)]
+        #size = [len(oligomer[i]) for i in range(self.nProt)]
 
-        return max(size)
+        oligomer = [tuple(i) for i in oligomer]
+        oligomer_set = np.array(list(set(oligomer)))
+        size = np.array([len(i) for i in oligomer_set])
+
+        idx = np.argsort(size)[::-1]
+
+        oligomer_set = oligomer_set[idx]
+        oligomer_size = size[idx]
+
+        return oligomer_size[0]
         
+########################
+##### Compactness ######
+########################
 
-    ''' Calculates the distance between the first and last Protein residue'''         
-    def EndToEndDistance(self):
+    ''' Calculates the distance between the N and C terminus of each protein and returns the average value'''         
+    def _EndToEndDistance(self):
         frame = self.universe.trajectory
         box = self.universe.dimensions
 
-        resA = self.universe.residues[0]
-        resB = self.universe.residues[self.nProt-1]
+        Npos = self.universe.select_atoms("name N").positions
+        Cpos = self.universe.select_atoms("name C").positions
 
-        """ calc distance matrix of all atoms and extract minimum dist """
-        M_d = distance_array(resA.atoms.positions,resB.atoms.positions, box=box)
+        EtE = 0
 
-        d_min = np.amin(M_d)
+        for i in range(self.nProt):
 
-        return d_min
+            Ni = Npos[i*self.ResProt]
+            Ci = Cpos[(i+1)*self.ResProt-1]
+
+            """ calc square distance between N and C """
+            d = self._SquaredDistance(Ni,Ci,box)
+
+            EtE += d
+
+        return EtE/self.nProt
 
     ''' Calculates average Molecules Radius of Gyration'''         
-    def Gyrate(self):
+    def _Gyrate(self):
         frame = self.universe.trajectory
         box = self.universe.dimensions
 
         Rg = 0
         for i in range(self.nProt):
             """ calculate mean vector of positions """
-            res = self.universe.residues[i*self.nProtRes:(i+1)*self.nProtRes]
+            res = self.universe.residues[i*self.ResProt:(i+1)*self.ResProt]
             rm = np.mean(res.atoms.positions,axis=0)
 
             rmsd = res.atoms.positions-rm
@@ -902,6 +994,58 @@ class TransitionNetworks:
         
         return Rg/self.nProt
 
+    ''' Calculate the compactness of the system based on the moment of inertia '''
+    def _CompactnessFactor(self):
+        atoms = self.universe.atoms
+
+        """Calculate the moment of inertia tensor for the structure and its
+        eigenvalues using periodic boundary conditions."""
+        momentOfInertiaTensor = atoms.moment_of_inertia(pbc=True)
+        eigenvalues = np.linalg.eigvals(momentOfInertiaTensor)
+
+        """Calculate the 'compactness' based on the lowest and highest eigenvalue."""
+        compactness = abs(round(10*min(eigenvalues)/max(eigenvalues)))
+
+        print(compactness)
+        return compactness      
+
+########################
+##### Ramachandran #####
+########################
+
+    """This function is only valid for monomers! Keep in mind that cluster indices can differ."""
+    def _Ramachandran(self):
+        warnings.filterwarnings("ignore", message="Cannot determine phi and psi angles for the first or last residues")
+        
+        allAtoms = self.universe.select_atoms("protein")
+
+        phis, psis = Ramachandran(allAtoms).run().angles.T 
+        phis = phis.T
+        psis = psis.T
+        
+        X = list()
+        for xArr, yArr in zip(phis[:, :], psis[:, :]):
+            for x, y in zip(xArr, yArr):
+                X.append([x, y])
+        X = np.array(X)
+        
+        kmeans = KMeans(n_clusters=2, random_state=0).fit(X)
+        xCluster, yCluster = kmeans.cluster_centers_.T
+        
+        kmean_list = np.zeros(len(phis))
+        for frameIdx, (xArr, yArr) in enumerate(zip(phis[:, :], psis[:, :])):
+            value = 0
+            for x, y in zip(xArr, yArr):
+                value += kmeans.predict([[x, y]])[0] 
+
+            kmean_list[frameIdx] = value
+
+
+        self.rama_list = kmean_list
+####################################################################################################### 
+#######################################       Utility Functions     ###################################
+#######################################################################################################
+   
     ''' Calculate the total number of self transitions ie. total 'size' '''
     def SumDiagonal(self,Matrix=False,TransitionMatrixName='my_TransitionMatrix.npy'):
 
@@ -926,14 +1070,9 @@ class TransitionNetworks:
    
     def PrintFrame(self):
         print(self.universe.trajectory.time)
-
-  
-####################################################################################################### 
-#######################################       Utility Functions     ###################################
-#######################################################################################################
-    
+ 
     ''' save load dictionary '''
-    def saveDict(self,outname,dictionary):
+    def SaveDict(self,outname,dictionary):
 
         with open(outname, 'w') as f:
             
@@ -942,7 +1081,7 @@ class TransitionNetworks:
             for state, indx in dictionary.items():
                 f.write(str(state)+'\t'+str(indx)+'\t\n')
 
-    def loadDict(self,inname):
+    def LoadDict(self,inname):
         dictionary = {}
         with open(inname, 'r') as f:
             for line in f:
@@ -958,7 +1097,7 @@ class TransitionNetworks:
 #### Correltaions ######
 ########################
 
-    def correlationCoefficients(self,trjpath = 'state_trj.txt'):
+    def CorrelationCoefficients(self,trjpath = 'state_trj.txt'):
 
         states = []
         with open(trjpath,'r') as f:
@@ -1094,6 +1233,7 @@ class TransitionNetworks:
         dsq = dx*dx + dy*dy + dz*dz
 
         return dsq
+
 
 
 
