@@ -16,6 +16,7 @@ This Script needs you to specify:
                 - residueInCoil
                 - EndToEnd
                 - Rg
+                - OrderParameter
                 - ProtProtContacts
                 - ProtProtContactsChain
                 - ProtLigContacts
@@ -23,6 +24,7 @@ This Script needs you to specify:
                 - hydrophobicContacts
                 - polarContacts
                 - intermolecularSaltBridge
+                - Ramachandran
 
     desc:   dictionary containing distance used for:
                 - ProtProtContacts
@@ -97,7 +99,7 @@ tn.GenerateNetwork(gexfName=TMname+'.gexf',TransitionMatrixName=TMname+'.npy', D
 
 
 """ Print correlation between descriptors to the terminal """
-tn.correlationCoefficients(trjpath=TMname+'state_trj.txt')
+tn.CorrelationCoefficients(trjpath=TMname+'state_trj.txt')
 
 
 
