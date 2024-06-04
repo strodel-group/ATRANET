@@ -95,11 +95,11 @@ tn = TransitionNetworks(top=top, traj=traj,
 
 
 """ Running generateNetwork() will calculate the TM and output the Graph as .gefx """
-tn.GenerateNetwork(gexfName=TMname+'.gexf',TransitionMatrixName=TMname+'.npy', DictionaryName=TMname+'Dict.txt', statetrjName=TMname+'state_trj.txt')
+tn.GenerateNetwork(gexfName=TMname+'.gexf',TransitionMatrixName=TMname+'.npy', DictionaryName=TMname+'Dict.txt', statetrjName=TMname+'_state_trj.txt')
 
 
 """ Print correlation between descriptors to the terminal """
-tn.CorrelationCoefficients(trjpath=TMname+'state_trj.txt')
+tn.CorrelationCoefficients(trjpath=TMname+'_state_trj.txt')
 
 
 
