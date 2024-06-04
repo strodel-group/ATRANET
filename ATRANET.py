@@ -131,18 +131,51 @@ class TransitionNetworks:
         self.top = top
 
         """ Check if single traj exists otherwise creat list with all trj that match the prefix"""
-        path_TM = Path(traj)
+        if type(traj) is str:
+            path_TM = Path(traj)
 
-        if path_TM.is_file():
-            print('Single trajctory input')
-            self.traj_names = [traj]
-        
+            if path_TM.is_file():
+                print('Single trajctory input')
+                self.N_if = 1
+                self.traj_names = [traj]
+
+            else:
+                """ If input is not single file, check for trajctories with the defined prefix """
+                file_names = glob.glob("{}*".format(traj)+traj_suf)
+     
+                N_if=len(file_names)
+                print('Multi trajectory input with ',N_if,' trajectories')
+                self.N_if = N_if
+                self.traj_names = file_names
+
+        elif type(traj) is list:
+            """ If input is List check if all elements of the list is an existing file """
+            check = True
+            print("List of trajectories as input")
+
+            for infile in traj:
+                path_TM = Path(infile)
+                if path_TM.is_file():
+                    continue
+                else:
+                    check = False
+                    print(infile," not found")
+
+            if check == False:
+                print("One or more trajectories do not exist")
+                sys.exit()
+
+            else:
+                N_if=len(traj)
+                print('Multi trajectory input with ',N_if,' trajectories')
+                self.N_if = N_if
+                self.traj_names = traj
+
         else:
-            """ If input is not single file, check for trajctories with the defined prefix """
-            file_names = glob.glob("{}*".format(traj)+traj_suf)  
-            N_if=len(file_names)
-            print('Multi trajectory input with ',N_if,' trajectories')
-            self.traj_names = file_names
+            sys.exit("Input not found")
+    
+        
+
         
         """ Initialize MDA """
         self.universe = md.Universe(self.top, self.traj_names[0])
@@ -205,23 +238,25 @@ class TransitionNetworks:
                 descriptorKeys.append(descriptorName)
 
         """ Initialize state list and dictionary """
-        differentStatesList = []
-        populationOfStatesDict = {}
-        transitionMatrixDict = {}
-        countIdx = 0
-        states = []
+        statesList = []             # List of states list for each trajectory
+        differentStatesList = []    # List saving all different states setting TM dimension
+        populationOfStatesDict = {} # dictionary counting how often a state is occupied
+        transitionMatrixDict = {}   # dictionary saving the index of TM to state representation mapping
+        countIdx = 0                # counter for transitionMatrixDict
+        
 
         """ write trajectory of states to be able to identify frames according to states """ 
-        if writetrajectory == True:
-            f = open(statetrjName,'w')
-            f.write('/ states: '+str(self.state))
+        f = open(statetrjName,'w')
+        f.write('/ states: '+str(self.state)+' \n')
         
         ''' Cycle through all input trajectories'''
         for traj in self.traj_names:
             print('Processing: '+traj)
 
-            if writetrajectory == True:
-                f.write(traj+' \n')
+
+            f.write(traj+' \n')
+
+            states = []                 # List to save states of individual trajectory
 
             """ Load traj into MDA """
             self.universe = md.Universe(self.top, traj)
@@ -470,38 +505,42 @@ class TransitionNetworks:
 
 
                 if frame%int(self.nFrames/10)==0:
-                    print(int(frame/self.nFrames*100),'% of frames processed')
+                    print(int((frame+1)/self.nFrames*10)*10,'% of frames processed')
             
                 """Append the states observed in this frame to the overall array 'states'."""
                 states.append(tuple(stateInFrame))
-                      
-                if writetrajectory == True:
-                    f.write(str(frame)+'\t'+str(stateInFrame)+'\t\n')
+
+                f.write(str(frame)+'\t'+str(stateInFrame)+'\t\n')
 
                 if debug == True:
                     if frame == 10: 
                         break      
 
-        if writetrajectory == True:
-            f.close()
+            statesList.append(states)
 
+        f.close()
+
+        ########################
+        ####    Build TN    ####
+        ########################
 
         """Get the number of different states which have been observed along the
         trajectory."""
         differentStates = len(differentStatesList)
-        states = np.array(states)
+        #states = np.array(states)
         
         """Initialize the transition matrix."""
         transitionMatrix = np.zeros((differentStates, differentStates), dtype=int)
         
         """Fill the transition matrix with transition values by counting all observed
         transitions between two states."""
-        
-        stateHistory = states
-        for state1, state2 in zip(stateHistory[:-1], stateHistory[1:]):
-                idx1 = transitionMatrixDict[tuple(state1)]
-                idx2 = transitionMatrixDict[tuple(state2)]
-                transitionMatrix[idx1][idx2] += 1
+
+        for stateHistory in statesList:
+            
+            for state1, state2 in zip(stateHistory[:-1], stateHistory[1:]):
+                    idx1 = transitionMatrixDict[tuple(state1)]
+                    idx2 = transitionMatrixDict[tuple(state2)]
+                    transitionMatrix[idx1][idx2] += 1
 
         return (transitionMatrix, transitionMatrixDict)
 
@@ -969,7 +1008,9 @@ class TransitionNetworks:
             """ calc square distance between N and C """
             d = self._SquaredDistance(Ni,Ci,box)
 
-            EtE += d
+            EtE += np.sqrt(d)
+
+        #print(frame.time, EtE)
 
         return EtE/self.nProt
 
@@ -1099,6 +1140,7 @@ class TransitionNetworks:
 
     def CorrelationCoefficients(self,trjpath = 'state_trj.txt'):
 
+        # read in trajectory and parse as a list of states
         states = []
         with open(trjpath,'r') as f:
 
@@ -1110,20 +1152,50 @@ class TransitionNetworks:
                     s = ast.literal_eval(x[1])
                     states.append(np.array(s))
 
+        # determine number of states and descriptors
         Ndesc = len(states[0])
         Nstates = len(states)
         states = np.array(states)
 
-        for i in range(Ndesc):
-            for j in range(i+1,Ndesc):
+        # Calc Correlation trajectory wise
+        for t in range(self.N_if):
+            low = int(t*Nstates/self.N_if)
+            up = int((t+1)*Nstates/self.N_if)
+            s = states[low:up]
+            print('')
+            print(self.traj_names[t])
 
-                d1 = states[:,i]
-                d2 = states[:,j]
+            for i in range(Ndesc):
+                for j in range(i+1,Ndesc):
 
-                corr = np.corrcoef(d1, d2)
-                cross_corr = corr[0][1]
+                    d1 = s[:,i]
+                    d2 = s[:,j]
 
-                print('Correlation {} {}: {}'.format(self.state[i],self.state[j],cross_corr))
+                    corr = np.corrcoef(d1, d2)
+                    cross_corr = corr[0][1]
+
+                    print('Correlation {} {}: {:.2f}'.format(self.state[i],self.state[j],cross_corr))
+
+        # if more than one trajectory also calculate the overall correlation
+        if self.N_if > 1:
+
+            print('')
+            print('Overall correlation')
+
+            for i in range(Ndesc):
+                for j in range(i+1,Ndesc):
+
+                    d1 = states[:,i]
+                    d2 = states[:,j]
+
+                    corr = np.corrcoef(d1, d2)
+                    cross_corr = corr[0][1]
+
+                    print('Correlation {} {}: {:.2f}'.format(self.state[i],self.state[j],cross_corr))
+
+            
+
+
 
         
                 
@@ -1233,7 +1305,6 @@ class TransitionNetworks:
         dsq = dx*dx + dy*dy + dz*dz
 
         return dsq
-
 
 
 
