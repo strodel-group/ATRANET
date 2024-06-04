@@ -254,7 +254,7 @@ class TransitionNetworks:
             print('Processing: '+traj)
 
 
-            f.write(traj+' \n')
+            f.write('/ '+traj+' \n')
 
             states = []                 # List to save states of individual trajectory
 
@@ -948,43 +948,52 @@ class TransitionNetworks:
     def _OligomericSize(self,cutoff):
 
         """ Determine Contact Matrix between pairs of chains (Same Routine as self._ContactPairs)""" 
+
+        # get mask with all non zero entries smaller than the cutoff
         mask0 = self.Mpp_chain != 0
         mask_c = self.Mpp_chain < cutoff*cutoff
         mask = mask_c == mask0
- 
-        #mask = mask.astype(int)
+
         ''' matrix with index in lines '''
         mask_index = np.ones(mask.shape)
         mask_index[:] = np.arange(self.nProt)
      
         oligomer = [set([i]) for i in range(self.nProt)] 
         
+        # add contacts to according set
         for i in range(self.nProt):
             contacts = mask_index[i][mask[i]]
             for indx in contacts:
-                oligomer[i].add(int(indx))
-                 
+                oligomer[i].add(int(indx))                 
 
-        
+        # unite connected sets         
         for i in range(self.nProt):
             for j in oligomer[i]:
                 if i != j:
                     united = oligomer[i].union(oligomer[j])
                     oligomer[i] = united
                     oligomer[j] = united
+        
+        # find size of largest oligomer within the system
+        oligomer_size = [len(o) for o in oligomer]
 
-        #size = [len(oligomer[i]) for i in range(self.nProt)]
+        oligomer_max = np.max(oligomer_size)
 
+        """
+        #Depricated method to find max oligomer size
         oligomer = [tuple(i) for i in oligomer]
         oligomer_set = np.array(list(set(oligomer)))
         size = np.array([len(i) for i in oligomer_set])
+
+        print(3,size)
 
         idx = np.argsort(size)[::-1]
 
         oligomer_set = oligomer_set[idx]
         oligomer_size = size[idx]
+        """
 
-        return oligomer_size[0]
+        return oligomer_max
         
 ########################
 ##### Compactness ######
